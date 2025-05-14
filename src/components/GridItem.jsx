@@ -1,7 +1,9 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
+import gsap from 'gsap';
 
 const GridItem = ({ item, onClick }) => {
   const itemRef = useRef(null);
+  const imageRef = useRef(null);
   
   // Create an object with all the data attributes from the item's config
   const dataAttributes = {};
@@ -23,6 +25,62 @@ const GridItem = ({ item, onClick }) => {
   if (item.config.gridItemStaggerFactor) dataAttributes['data-grid-item-stagger-factor'] = item.config.gridItemStaggerFactor;
   if (item.config.wobbleStrength) dataAttributes['data-wobble-strength'] = item.config.wobbleStrength;
   
+  // Add hover animations
+  useEffect(() => {
+    const item = itemRef.current;
+    const image = imageRef.current;
+    
+    if (!item || !image) return;
+    
+    // Setup initial state
+    gsap.set(image, { scale: 1 });
+    
+    // Create hover animations
+    const onEnter = () => {
+      gsap.to(image, {
+        scale: 1.05,
+        duration: 0.4,
+        ease: 'power2.out',
+        overwrite: true
+      });
+      
+      gsap.to(item, {
+        boxShadow: '0 8px 20px rgba(0, 0, 0, 0.2)',
+        y: -5,
+        duration: 0.4,
+        ease: 'power2.out',
+        overwrite: true
+      });
+    };
+    
+    const onLeave = () => {
+      gsap.to(image, {
+        scale: 1,
+        duration: 0.3,
+        ease: 'power2.out',
+        overwrite: true
+      });
+      
+      gsap.to(item, {
+        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)',
+        y: 0,
+        duration: 0.3,
+        ease: 'power2.out',
+        overwrite: true
+      });
+    };
+    
+    // Add event listeners
+    item.addEventListener('mouseenter', onEnter);
+    item.addEventListener('mouseleave', onLeave);
+    
+    // Cleanup
+    return () => {
+      item.removeEventListener('mouseenter', onEnter);
+      item.removeEventListener('mouseleave', onLeave);
+    };
+  }, []);
+  
   return (
     <figure 
       className="grid__item"
@@ -34,6 +92,7 @@ const GridItem = ({ item, onClick }) => {
     >
       <div 
         className="grid__item-image"
+        ref={imageRef}
         style={{ 
           backgroundImage: `url(${item.image})`,
           backgroundSize: '100%',

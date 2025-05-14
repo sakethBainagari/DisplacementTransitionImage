@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { getElementCenter } from '../utils';
+import DisplacementTransition from './DisplacementTransition';
 
-// Default animation configuration - matching sample_code exactly
+// Default animation configuration
 const defaultConfig = {
   clipPathDirection: 'top-bottom',
   autoAdjustHorizontalClipPath: true,
@@ -25,14 +26,13 @@ const defaultConfig = {
   sineFrequency: Math.PI,
 };
 
-// Create a deep copy of the initial config, just like sample_code
+// Create a deep copy of the initial config
 const originalConfig = { ...defaultConfig };
 
-// Linear interpolation helper - identical to sample_code
+// Linear interpolation helper
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // Helper function to get appropriate clip-paths based on direction
-// Identical to sample_code implementation
 const getClipPathsForDirection = (direction) => {
   switch (direction) {
     case 'bottom-top':
@@ -64,7 +64,6 @@ const getClipPathsForDirection = (direction) => {
 };
 
 // Helper function to compute stagger delays based on distance
-// Identical to sample_code implementation
 const computeStaggerDelays = (clickedItem, items) => {
   if (!clickedItem) return Array(items.length).fill(0);
   
@@ -76,7 +75,7 @@ const computeStaggerDelays = (clickedItem, items) => {
     return Math.hypot(center.x - baseCenter.x, center.y - baseCenter.y);
   });
   
-  // Normalize to max distance like in sample_code
+  // Normalize to max distance
   const max = Math.max(...distances);
   return distances.map((d) => (d / max) * defaultConfig.gridItemStaggerFactor);
 };
@@ -154,11 +153,12 @@ const Panel = ({ isOpen, item, onClose }) => {
   const [isRight, setIsRight] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [config, setConfig] = useState(defaultConfig);
+  const [showTransition, setShowTransition] = useState(false);
+  const [transitionConfig, setTransitionConfig] = useState(null);
 
   // Update animation config when a new item is selected
   useEffect(() => {
     if (item && item.config) {
-      // Merge item config with default - exactly like sample_code
       setConfig({
         ...defaultConfig,
         ...item.config
@@ -191,7 +191,6 @@ const Panel = ({ isOpen, item, onClose }) => {
     const panel = panelRef.current;
     const panelImg = panelImgRef.current;
     const panelContent = panelContentRef.current;
-    const moverContainer = moverContainerRef.current;
     
     // Position panel based on which side the item was clicked
     const centerX = getElementCenter(clickedItemEl).x;
@@ -199,7 +198,7 @@ const Panel = ({ isOpen, item, onClose }) => {
     const isLeftSide = centerX < windowHalf;
     setIsRight(!isLeftSide);
     
-    // Auto-adjust clip path direction - exactly like sample_code
+    // Auto-adjust clip path direction
     let configClone = { ...config };
     if (configClone.autoAdjustHorizontalClipPath) {
       if (
@@ -213,7 +212,7 @@ const Panel = ({ isOpen, item, onClose }) => {
     if (isOpen) {
       setIsAnimating(true);
       
-      // 1. HIDE FRAME - exactly like hideFrame() in sample_code
+      // 1. HIDE FRAME
       gsap.to(['.frame', '.heading'], {
         opacity: 0,
         duration: 0.5,
@@ -221,10 +220,9 @@ const Panel = ({ isOpen, item, onClose }) => {
         pointerEvents: 'none',
       });
       
-      // 2. ANIMATE GRID ITEMS - exactly like sample_code's animateGridItems()
+      // 2. ANIMATE GRID ITEMS
       const gridItems = document.querySelectorAll('.grid__item');
       const delays = computeStaggerDelays(clickedItemEl, Array.from(gridItems));
-      const clipPaths = getClipPathsForDirection(configClone.clipPathDirection);
       
       gsap.to(gridItems, {
         opacity: (i, el) => (el === clickedItemEl ? 1 : 0),
@@ -234,163 +232,113 @@ const Panel = ({ isOpen, item, onClose }) => {
             ? configClone.stepDuration * configClone.clickedItemDurationFactor
             : 0.3,
         ease: configClone.gridItemEase,
-        clipPath: (i, el) => (el === clickedItemEl ? clipPaths.from : 'none'),
         delay: (i) => delays[i],
       });
       
-      // 3. ANIMATE TRANSITION - exactly like sample_code's animateTransition()
+      // 3. LAUNCH DISPLACEMENT TRANSITION
+      const startRect = clickedItemImage.getBoundingClientRect();
+      const endRect = panelImg.getBoundingClientRect();
       
-      // Generate path between clicked item and panel
-      const path = generateMotionPath(
-        clickedItemImage.getBoundingClientRect(),
-        panelImg.getBoundingClientRect(),
-        configClone.steps,
-        configClone
-      );
-      
-      // Clean existing movers first - important for proper cleanup
-      while (moverContainer.firstChild) {
-        moverContainer.removeChild(moverContainer.firstChild);
-      }
-      
-      // Create document fragment for batch insertion - exactly like sample_code
-      const fragment = document.createDocumentFragment();
-      
-      // Create and animate movers - identical to sample_code
-      path.forEach((step, index) => {
-        const mover = document.createElement('div');
-        mover.className = 'mover';
-        
-        // Set initial mover style using gsap.set exactly like sample_code
-        gsap.set(mover, createMoverStyle(
-          step, 
-          index, 
-          `url(${item.image})`,
-          configClone.clipPathDirection,
-          configClone.rotationRange,
-          configClone.moverBlendMode
-        ));
-        
-        fragment.appendChild(mover);
-        
-        // Animate mover - identical to sample_code
-        const delay = index * configClone.stepInterval;
-        gsap
-          .timeline({ delay })
-          .fromTo(
-            mover,
-            { opacity: 0.4, clipPath: clipPaths.hide },
+      // Setup transition configuration
+      setTransitionConfig({
+        sourceImage: item.image,
+        targetImage: item.image, // Same image for opening
+        startRect: startRect,
+        endRect: endRect,
+        isOpening: true,
+        duration: 2.2,
+        onComplete: () => {
+          // Reveal panel content after transition completes
+          gsap.set(panelImg, { autoAlpha: 1 });
+          gsap.fromTo(
+            panelContent,
+            { y: 30, opacity: 0 },
             {
+              y: 0,
               opacity: 1,
-              clipPath: clipPaths.reveal,
-              duration: configClone.stepDuration,
-              ease: configClone.moverEnterEase,
+              duration: 0.8,
+              ease: 'expo.out',
+              stagger: 0.05,
+              onComplete: () => {
+                setIsAnimating(false);
+              }
             }
-          )
-          .to(
-            mover,
-            {
-              clipPath: clipPaths.from,
-              duration: configClone.stepDuration,
-              ease: configClone.moverExitEase,
-            },
-            `+=${configClone.moverPauseBeforeExit}`
           );
+          
+          // Hide transition
+          setShowTransition(false);
+        }
       });
       
-      // Add all movers to the DOM at once - exactly like sample_code
-      moverContainer.appendChild(fragment);
+      // Show transition
+      setShowTransition(true);
       
-      // Schedule mover cleanup - exactly like sample_code's scheduleCleanup()
-      const cleanupDelay =
-        configClone.steps * configClone.stepInterval +
-        configClone.stepDuration * 2 +
-        configClone.moverPauseBeforeExit;
-        
-      gsap.delayedCall(cleanupDelay, () => {
-        const movers = moverContainer.querySelectorAll('.mover');
-        movers.forEach(m => m.remove());
-      });
-      
-      // 4. REVEAL PANEL - exactly like sample_code's revealPanel()
+      // 4. PREPARE PANEL
       gsap.set(panelContent, { opacity: 0 });
       gsap.set(panel, { opacity: 1, pointerEvents: 'auto' });
+      gsap.set(panelImg, { autoAlpha: 0 }); // Hide panel image until transition completes
       
-      gsap
-        .timeline({
-          defaults: {
-            duration: configClone.stepDuration * configClone.panelRevealDurationFactor,
-            ease: configClone.panelRevealEase,
-          },
-          onComplete: () => {
-            setIsAnimating(false);
-          }
-        })
-        .fromTo(
-          panelImg,
-          { clipPath: clipPaths.hide },
-          {
-            clipPath: clipPaths.reveal,
-            pointerEvents: 'auto',
-            delay: configClone.steps * configClone.stepInterval,
-          }
-        )
-        .fromTo(
-          panelContent,
-          { y: 25 },
-          {
-            duration: 1,
-            ease: 'expo',
-            opacity: 1,
-            y: 0,
-          },
-          '<-=.2'
-        );
-        
     } else if (panel) {
-      // RESET VIEW - exactly like resetView() in sample_code
+      // RESET VIEW
       setIsAnimating(true);
       
-      const gridItems = document.querySelectorAll('.grid__item');
-      const delays = computeStaggerDelays(clickedItemEl, Array.from(gridItems));
+      // Get position information for transition
+      const startRect = panelImg.getBoundingClientRect();
+      const endRect = clickedItemImage.getBoundingClientRect();
       
-      gsap
-        .timeline({
-          defaults: { duration: configClone.stepDuration, ease: 'expo' },
-          onComplete: () => {
-            setIsAnimating(false);
-          },
-        })
-        .to(panel, { opacity: 0 })
-        .add(() => {
-          // Show frame - identical to showFrame() in sample_code
+      // Setup closing transition configuration
+      setTransitionConfig({
+        sourceImage: item.image,
+        targetImage: item.image, // Same image for closing
+        startRect: startRect,
+        endRect: endRect,
+        isOpening: false,
+        duration: 1.8,
+        onComplete: () => {
+          // Reset all elements after closing transition completes
+          const gridItems = document.querySelectorAll('.grid__item');
+          const delays = computeStaggerDelays(clickedItemEl, Array.from(gridItems));
+          
+          gsap.set(panel, { opacity: 0, pointerEvents: 'none' });
+          gsap.set(panelImg, { clipPath: 'inset(0% 0% 100% 0%)' });
+          gsap.set(gridItems, { clipPath: 'none', opacity: 0, scale: 0.8 });
+          
+          // Show frame
           gsap.to(['.frame', '.heading'], {
             opacity: 1,
             duration: 0.5,
             ease: 'sine.inOut',
             pointerEvents: 'auto',
           });
-        }, 0)
-        .set(panel, { opacity: 0, pointerEvents: 'none' })
-        .set(panelImg, {
-          clipPath: 'inset(0% 0% 100% 0%)',
-        })
-        .set(gridItems, { clipPath: 'none', opacity: 0, scale: 0.8 }, 0)
-        .to(
-          gridItems,
-          {
+          
+          // Fade in grid items
+          gsap.to(gridItems, {
             opacity: 1,
             scale: 1,
             delay: (i) => delays[i],
-          },
-          '>'
-        );
-        
-      // Clean up any remaining movers
-      const movers = moverContainer.querySelectorAll('.mover');
-      movers.forEach(m => m.remove());
+            onComplete: () => {
+              setIsAnimating(false);
+            }
+          });
+          
+          // Hide transition
+          setShowTransition(false);
+        }
+      });
       
-      // Reset config - identical to sample_code
+      // Hide panel content immediately
+      gsap.to(panelContent, {
+        opacity: 0,
+        y: 20,
+        duration: 0.3,
+        ease: 'power2.in',
+        onComplete: () => {
+          // Show transition
+          setShowTransition(true);
+        }
+      });
+      
+      // Reset config
       Object.assign(config, originalConfig);
     }
   }, [isOpen, item, config]);
@@ -400,6 +348,9 @@ const Panel = ({ isOpen, item, onClose }) => {
   return (
     <>
       <div ref={moverContainerRef} className="movers-container"></div>
+      {showTransition && transitionConfig && (
+        <DisplacementTransition {...transitionConfig} />
+      )}
       <div 
         ref={panelRef} 
         className={`panel ${isRight ? 'panel--right' : ''}`}
